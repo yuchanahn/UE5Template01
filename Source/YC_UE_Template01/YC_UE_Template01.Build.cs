@@ -20,5 +20,8 @@ public class YC_UE_Template01 : ModuleRules
 		{
 			"C:\\YuChan\\C++\\GameEngineUtils\\src"
 		});
+		
+		PublicDefinitions.Add("_HAS_CXX20=1");
+		PublicDefinitions.Add("_SILENCE_CLANG_COROUTINE_MESSAGE");
 	}
 }
