@@ -5,6 +5,8 @@
 
 AGameLoop::AGameLoop() {
 	PrimaryActorTick.bCanEverTick = true;
+
+	RES::Load();
 }
 
 AGameLoop::~AGameLoop() {
@@ -13,8 +15,9 @@ AGameLoop::~AGameLoop() {
 
 void AGameLoop::Tick(const float DeltaTime) {
 	Super::Tick(DeltaTime);
+
 	if(!StartFlag) {
-		GameStart();
+		GameStart(this);
 		Coro::CoStart([]() -> coroutine {
 			while(YC_Global::IsGameLoopStarted) {
 				co_yield wait_time { 1 };
