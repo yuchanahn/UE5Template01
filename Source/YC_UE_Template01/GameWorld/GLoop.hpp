@@ -1,5 +1,6 @@
 #pragma once
 #include "YC/Time/Time.hpp"
+#include "YC_UE_Template01/Controller/Controller.hpp"
 #include "YC_UE_Template01/GameCharacter/CharacterSystem.hpp"
 
 constexpr double DSec = 0.01;
@@ -18,6 +19,10 @@ inline void GameStart(UObject* InGameMaster) {
 	YC_Global::GameMaster = InGameMaster;
 	
 	YC::System::Character::Load(YC_Global::GameMaster);
+
+	ANetPC* PC = Cast<ANetPC>(YC_Global::GameMaster->GetWorld()->GetFirstPlayerController());
+	
+	YC::System::Controller::Load(YC_Global::GameMaster, PC);
 }
 
 inline void GameEnd() { YC_Global::IsGameLoopStarted = false; }

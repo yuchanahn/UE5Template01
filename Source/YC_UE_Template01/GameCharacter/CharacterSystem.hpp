@@ -41,13 +41,11 @@ inline void Load(UObject* GameMaster) {
 	auto NewAction = [GameMaster](auto C) { return NewObject<UInputAction>(GameMaster, C); };
 	auto NewInputMapping = [GameMaster](auto C) { return NewObject<UInputMappingContext>(GameMaster, C); };
 
-	auto NewActionOf = [NewAction](const UInputAction* Act) { return NewAction(Act->StaticClass()); };
-	auto NewIMCOf = [NewInputMapping](const UInputMappingContext* Act) { return NewInputMapping(Act->StaticClass()); };
 
-	Data.IA_Move = NewActionOf(RES::IA_Move);
+	Data.IA_Move = NewAction(RES::IA_Move_SC);
 
-	const auto ResultSkm = MainPlayer | YC::GetMesh | Curry(YC::SetSkeletalMesh)(RES::SKM_Manny);
-	const auto ResultImc = MainPlayer | YC::GetController | YC::GetSubsystem | Curry(AddMappingContext)(NewIMCOf(RES::IMC_MainChr1), 0);
+	const auto ResultSkm = MainPlayer | GetMesh | Curry(SetSkeletalMesh)(RES::SKM_Manny);
+	const auto ResultImc = MainPlayer | GetController | GetSubsystem | Curry(AddMappingContext)(NewInputMapping(RES::IMC_MainChr1_SC), 0);
 
 	if (HandleError(ResultSkm) || HandleError(ResultImc)) return;
 
@@ -68,8 +66,8 @@ static void Movement(const APlayerController* PlayerController, ACharacter* InCh
 
 inline void Loop() {
 	for (auto& Chr : Chrs) {
-		const auto Controller = YC::GetController(Chr);
-		const auto PlayerInput = Controller | YC::GetSubsystem | YC::GetPlayerInput;
+		const auto Controller = GetController(Chr);
+		const auto PlayerInput = Controller | GetSubsystem | GetPlayerInput;
 		if (HandleError(PlayerInput)) return;
 		if (HandleError(InputCheck(PlayerInput.Unwrap(), ChrDataList[0].IA_Move) | Curry(Movement)(Controller.Unwrap(), Chr))) return;
 	}

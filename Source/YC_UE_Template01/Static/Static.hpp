@@ -54,6 +54,14 @@ namespace YC {
 		return Err { std::string("MeshComponent or Mesh is not valid") };
 	}
 
+	static ErrorOr<void> SetAnimInstance(UClass* InAnimInstance, USkeletalMeshComponent* InMeshComponent) {
+		if (IsValid(InMeshComponent) && IsValid(InAnimInstance)) {
+			InMeshComponent->SetAnimInstanceClass(InAnimInstance);
+			return {};
+		}
+		return Err { std::string("MeshComponent or AnimInstance is not valid") };
+	}
+
 	static ErrorOr<void> AddMappingContext(UInputMappingContext* InImc, int32 InPriority, UEnhancedInputLocalPlayerSubsystem* InSubSys) {
 		if (IsValid(InSubSys) && IsValid(InImc)) {
 			InSubSys->AddMappingContext(InImc, InPriority);
