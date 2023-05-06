@@ -1,7 +1,8 @@
 #pragma once
-#include "YC/Time/Time.hpp"
+#include "YC_UE_Template01/Client/Client.hpp"
 #include "YC_UE_Template01/Controller/Controller.hpp"
 #include "YC_UE_Template01/GameCharacter/CharacterSystem.hpp"
+#include "YC_UE_Template01/Server/Server.hpp"
 
 constexpr double DSec = 0.01;
 
@@ -10,22 +11,37 @@ inline bool IsGameLoopStarted = false;
 inline std::chrono::time_point<std::chrono::steady_clock> GameLoopStartTime;
 inline int TickCount;
 inline UObject* GameMaster;
+inline std::vector<std::function<void()>> OnGameStart_EventList;
 }
 
 inline void GameStart(UObject* InGameMaster) {
+
+	Panic = [](const std::string& Msg) {
+		UE_LOG(LogTemp, Error, TEXT("%s"), *FString(Msg.c_str()));
+		checkf(0, L"패닉! 스텍트레이스 읽어보삼!");
+	};
+	
 	YC_Global::IsGameLoopStarted = true;
 	YC_Global::GameLoopStartTime = std::chrono::high_resolution_clock::now();
 	YC_Global::TickCount = 0;
 	YC_Global::GameMaster = InGameMaster;
-	
-	YC::System::Character::Load(YC_Global::GameMaster);
 
-	ANetPC* PC = Cast<ANetPC>(YC_Global::GameMaster->GetWorld()->GetFirstPlayerController());
-	
-	YC::System::Controller::Load(YC_Global::GameMaster, PC);
+	YC::Client::Load(YC_Global::GameMaster);
+
+	// HasAuthority?
+	if((YC::GetWorld(YC_Global::GameMaster) | YC::GetNetPC | YC::HasAuthority).Or(false)) {
+		YC::Server::ServerLoad(YC_Global::GameMaster);
+	}
+
+	for(auto& Event : YC_Global::OnGameStart_EventList) { Event(); }
+	YC_Global::OnGameStart_EventList.clear();
+	//YC::System::Character::Load(YC_Global::GameMaster);
 }
 
-inline void GameEnd() { YC_Global::IsGameLoopStarted = false; }
+inline void GameEnd() {
+	YC_Global::IsGameLoopStarted = false;
+	YC::Client::Unload();
+}
 
 inline void GameLoop() {
 	const auto T = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -35,8 +51,14 @@ inline void GameLoop() {
 	while (Sec >= DSec) {
 		// Main GameLoop
 		// ...
+		auto NetPc = YC::GetWorld(YC_Global::GameMaster) | YC::GetNetPC;
 		
-		YC::System::Character::Loop();
+		if((NetPc | YC::HasAuthority).Or(false)) {
+			YC::Server::ServerLoop();
+		}
+		
+		NetPc | WhenOk
+			  | YC::Client::Loop;
 		
 		// End Main GameLoop
 		Sec -= DSec;

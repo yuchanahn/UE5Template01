@@ -19,6 +19,7 @@
 		};                                                                                              \
 	}           																						\
 
+
 namespace YC_Internal{
 static uint8 __packet_id_counter = 0;
 static uint8 GetPacketID() {
@@ -31,6 +32,7 @@ static uint8 GetPacketID() {
 // 패킷은 반드시 YC_PACKET 매크로를 사용하여 정의해야 합니다.
 // =========================================
 
+struct FPac_SpawnedCharacterInServer;
 struct FPac_Test;
 struct FPac_ClientConnected;
 
@@ -39,7 +41,7 @@ struct FPac_ClientConnected;
 // 각 패킷의 채널을 정의 합니다.
 // 같은 채널의 패킷들은 순서가 보장됩니다.
 // =========================================
-using Chanel_Player = std::variant<FPac_Test, FPac_ClientConnected>;
+using Chanel_Player = std::variant<FPac_Test, FPac_ClientConnected, FPac_SpawnedCharacterInServer>;
 
 USTRUCT(BlueprintType)
 struct FPac_Test {
@@ -86,4 +88,27 @@ struct FPac_SpawnAndPossess {
 	int8 SelectedCharacterID;
 	
 	YC_PACKET(FPac_SpawnAndPossess);
+};
+
+USTRUCT()
+struct FPac_SpawnedCharacterInServer {
+	GENERATED_BODY()
+	
+	UPROPERTY()
+	int8 CharacterIndexOfServer;
+
+	UPROPERTY()
+	int8 CharacterID;
+	
+	YC_PACKET(FPac_SpawnedCharacterInServer);
+};
+
+USTRUCT()
+struct FPac_GetMyCharacterIndexFromServer {
+	GENERATED_BODY()
+	
+	UPROPERTY()
+	int8 CharacterIndexOfServer;
+
+	YC_PACKET(FPac_GetMyCharacterIndexFromServer);
 };

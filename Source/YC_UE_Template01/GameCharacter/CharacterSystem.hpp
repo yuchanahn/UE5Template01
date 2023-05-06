@@ -4,9 +4,12 @@
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedInputComponent.h"
 #include "InputMappingContext.h"
+#include "Camera/CameraComponent.h"
+#include "GameFramework/SpringArmComponent.h"
 
 #include "YC/ErrorOr/ErrorOr.hpp"
 #include "YC/Curry/Curry.hpp"
+#include "YC_UE_Template01/ActorIndexingComp.h"
 
 #include "YC_UE_Template01/Input/Input.hpp"
 #include "YC_UE_Template01/Static/ResourceMap.hpp"
@@ -14,6 +17,7 @@
 #include "YC_UE_Template01/Utils/String.hpp"
 
 namespace YC {namespace System {namespace Character {
+
 template <typename ErrorOrType>
 bool HandleError(const ErrorOrType& Result) {
 	if (Result.IsErr()) {
@@ -23,39 +27,65 @@ bool HandleError(const ErrorOrType& Result) {
 	return false;
 }
 
-struct FCharacterData {
-	// Input Setting
-	UInputAction* IA_Move;
+
+struct FMyCharacterData {
+	std::unordered_map<std::string, UInputAction*> IA_Map;
+};
+struct FOtherCharacterData {
+	
 };
 
-inline std::vector<ACharacter*> Chrs;
-inline std::vector<FCharacterData> ChrDataList;
+using FCharacterData = std::variant<FMyCharacterData, FOtherCharacterData>;
 
-inline void Load(UObject* GameMaster) {
-	Chrs.clear();
-	ChrDataList.clear();
+struct FPlayerData {
+	ACharacter* AChrPtr;
+	FCharacterData CharacterData;
+};
 
-	const auto MainPlayer = Spawn<ACharacter>(GameMaster, ACharacter::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator);
+static ErrorOr<FPlayerData> SpawnCharacter_Padma(const UObject* GameMaster) {
+	const auto Chr = Spawn<ACharacter>(GameMaster, ACharacter::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator);
+	
+	Chr | GetMesh | Curry(SetSkeletalMesh, RES::SKM_Manny);
+	Chr | GetMesh | Curry(SetRelativeLocation, FVector(0, 0, -88));
+	Chr | GetMesh | Curry(SetRelativeRotation, FRotator(0, -90, 0));
+	
+	auto CameraBoom = Chr | YC_Cast<UObject>
+						  | AddComp<USpringArmComponent>;
 
-	FCharacterData Data;
-	auto NewAction = [GameMaster](auto C) { return NewObject<UInputAction>(GameMaster, C); };
-	auto NewInputMapping = [GameMaster](auto C) { return NewObject<UInputMappingContext>(GameMaster, C); };
+	auto ActorIndexing = Chr | YC_Cast<UObject>
+							 | AddComp<UActorIndexingComp>
+							 | RegisterComponent;
+	//Chr.Unwrap()->AddComponent(FName("ActorIndexing"), true, FTransform::Identity, ActorIndexing.Unwrap());
+	//ActorIndexing.Unwrap();
+	
+	const auto RootComp = Chr | GetRootComp;
+	
+	if(RootComp.IsErr()) return Err{RootComp.GetError()};
+	
+	CameraBoom | SetupAttachment(RootComp.Unwrap(), NAME_None);
+	CameraBoom | SetTargetArmLength(600.0f);
+	CameraBoom | SetUsePawnControlRotation(true);
+	CameraBoom | RegisterComponent;
+	
+	auto FollowCamera = CameraBoom | AddComp<UCameraComponent>;
+	
+	if(CameraBoom.IsErr()) return Err{CameraBoom.GetError()};
+	
+	FollowCamera | SetupAttachment(CameraBoom.Unwrap(), USpringArmComponent::SocketName);
+	FollowCamera | SetUsePawnControlRotation(false);
+	FollowCamera | RegisterComponent;
 
-
-	Data.IA_Move = NewAction(RES::IA_Move_SC);
-
-	const auto ResultSkm = MainPlayer | GetMesh | Curry(SetSkeletalMesh)(RES::SKM_Manny);
-	const auto ResultImc = MainPlayer | GetController | GetSubsystem | Curry(AddMappingContext)(NewInputMapping(RES::IMC_MainChr1_SC), 0);
-
-	if (HandleError(ResultSkm) || HandleError(ResultImc)) return;
-
-	MainPlayer.Expect();
-
-	ChrDataList.push_back(Data);
-	Chrs.push_back(MainPlayer.Unwrap());
+	auto NewAction = [Chr](auto C) { return NewObject<UInputAction>(Chr.Unwrap(), C); };
+	auto NewInputMapping = [Chr](auto C) { return NewObject<UInputMappingContext>(Chr.Unwrap(), C); };
+	
+	FPlayerData Data {};
+	
+	Data.AChrPtr = Chr.Unwrap();
+	
+	return Data;
 }
 
-static void Movement(const APlayerController* PlayerController, ACharacter* InChr, const FInputActionValue& V) {
+static void Movement_(const APlayerController* PlayerController, ACharacter* InChr, const FInputActionValue& V) {
 	const auto Axis = V.Get<FVector2D>();
 	const auto YawRotation = FRotator(0, PlayerController->GetControlRotation().Yaw, 0);
 	const auto ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
@@ -63,18 +93,6 @@ static void Movement(const APlayerController* PlayerController, ACharacter* InCh
 	InChr->AddMovementInput(ForwardDirection, Axis.Y);
 	InChr->AddMovementInput(RightDirection, Axis.X);
 }
+static auto Movement = Curry(Movement_);
 
-inline void Loop() {
-	for (auto& Chr : Chrs) {
-		const auto Controller = GetController(Chr);
-		const auto PlayerInput = Controller | GetSubsystem | GetPlayerInput;
-		if (HandleError(PlayerInput)) return;
-		if (HandleError(InputCheck(PlayerInput.Unwrap(), ChrDataList[0].IA_Move) | Curry(Movement)(Controller.Unwrap(), Chr))) return;
-	}
-}
-
-inline void Unload() {
-	Chrs.clear();
-	ChrDataList.clear();
-}
 }}}

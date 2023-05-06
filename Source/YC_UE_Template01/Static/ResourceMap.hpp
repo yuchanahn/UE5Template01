@@ -1,4 +1,5 @@
 #pragma once
+#include "InputMappingContext.h"
 
 namespace RES {
 
@@ -14,6 +15,14 @@ inline UAnimBlueprint* ABP_Manny;
 template <typename Type>
 using ObFind = ConstructorHelpers::FObjectFinder<Type>;
 
+inline std::vector<std::unordered_map<std::string, UClass*>> IA_SC_Map_List;
+
+enum EPlayer {
+	Padma,
+	Feama,
+	Num
+};
+
 inline void Load() {
 	using Find_Imc = ObFind<UInputMappingContext>;
 	using Find_IA = ObFind<UInputAction>;
@@ -28,6 +37,13 @@ inline void Load() {
 	
 	SKM_Manny =  Find_Skm(L"/Game/Characters/Mannequins/Meshes/SKM_Manny").Object;
 	ABP_Manny = Find_ABP(L"/Game/Characters/Mannequins/Animations/ABP_Manny").Object;
+	
+	IA_SC_Map_List.resize(EPlayer::Num);
+	
+	IA_SC_Map_List[EPlayer::Padma]["IA_Move"] = IA_Move_SC;
+	
 }
+
+
 
 }

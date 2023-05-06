@@ -6,7 +6,10 @@
 
 class UInputAction;
 
-static ErrorOr<FInputActionValue> InputCheck(const UEnhancedPlayerInput* InputComp, UInputAction* InInputAct) {
+static ErrorOr<FInputActionValue> InputCheck_(UInputAction* InInputAct, UEnhancedPlayerInput* InputComp) {
+	if(!IsValid(InInputAct)) return Err { std::string("InInputAct is not valid") };
 	if(!IsValid(InputComp)) return Err { std::string("InputComp is not valid") };
 	return InputComp->GetActionValue(InInputAct);
 }
+
+static auto InputCheck = Curry(InputCheck_);
