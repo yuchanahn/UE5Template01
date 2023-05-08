@@ -18,25 +18,8 @@ static void SelectCharacter(const int8 CharacterID);
 
 inline std::vector<Chanel_Player> PacOf_Player = {};
 inline ErrorOr<ANetPC*> NetPC { "Not Setting" };
-inline std::unordered_map<int32, ACharacter*> AChrPtr_List = {};
+inline std::unordered_map<int32, UActorIndexingComp*> ANetEntity_List = {};
 inline TMap<FString, std::function<void()>> UI_Call;
-
-
-static void Load(const UObject* G) {
-	Coro::CoStart([](const UObject* G) -> coroutine {
-		NetPC = GetWorld(G) | GetNetPC;
-		while(!NetPC.IsOk()) {
-			co_yield wait_time { 1 };
-			NetPC = GetWorld(G) | GetNetPC;
-		}
-		FPac_Test::Bind([](FPac_Test Pac){ PacOf_Player.push_back(Pac); });
-
-		Send(FPac_Test { 1, 2, "Hello Server!" }, NetPC.Unwrap());
-	}(G));
-	UI_Call.Add(L"SpawnActor", []() {
-		Send(FPac_Test { 1, 2, "SpawnActor" }, NetPC.Unwrap());
-	});
-}
 
 inline FString GetChatStringFrom(FPac_Test Packet) {
 	//SelectCharacter(0);
@@ -70,11 +53,11 @@ static System::Character::FPlayerData Setup_CharacterInput(
 	const UClass* IMC_SC,
 	const std::unordered_map<std::string, UClass*>& IA_SC_List
 	) {
-
+	
 	GetSubsystem(PC) | AddMappingContext(NewObject<UInputMappingContext>(MyPlayer.AChrPtr, IMC_SC), 0);
 	
 	auto Result_Player = MyPlayer;
-
+	
 	auto Data = std::get<System::Character::FMyCharacterData>(Result_Player.CharacterData);
 	for(const auto& [fst, snd] : IA_SC_List) {
 		 Data.IA_Map[fst] = NewObject<UInputAction>(MyPlayer.AChrPtr, snd);
@@ -84,42 +67,60 @@ static System::Character::FPlayerData Setup_CharacterInput(
 	return Result_Player;
 }
 
+static ErrorOr<int32> GetMyChrNumber(const FPac_GetMyCharacterIndexFromServer& Packet) {
+	UE_LOG(LogTemp, Warning, TEXT("MyChrIndex : %d"), Packet.CharacterIndexOfServer);
+	return Packet.CharacterIndexOfServer;
+}
 
-
-
-static System::Character::FPlayerData SE_FindMyCharacter(ANetPC* PC, FPac_GetMyCharacterIndexFromServer Packet) {
-	int8 Key = Packet.CharacterIndexOfServer;
-	
-	static ACharacter* MyCharacter = nullptr; 
-	
-	Coro::CoStart([PC]() -> coroutine {
-		while(IsValid(PC)) {
-			if(IsValid(PC->GetCharacter())) {
-				co_return;
-			}
-			co_yield wait_time { 1 };
+static ErrorOr<System::Character::FPlayerData> GetPlayerData(const int32 CharacterIndexOfServer) {
+	if(ANetEntity_List.contains(CharacterIndexOfServer)) {
+		const auto Owner = ANetEntity_List[CharacterIndexOfServer]->GetOwner();
+		if(Owner == nullptr) {
+			return Err { std::string("Not Found Owner") };
 		}
-	}());
-	return {};
+		const auto Chr = Cast<ACharacter>(Owner);
+		if(Chr == nullptr) {
+			return Err { std::string("Not Found ACharacter") };
+		}
+		
+		return System::Character::FPlayerData { Chr };
+	}
+	return Err { std::string("Not Found Character index of Array") };
 }
 
+static void Load(const UObject* G) {
+	Coro::CoStart([](const UObject* G) -> coroutine {
+		NetPC = GetWorld(G) | GetNetPC;
+		while(!NetPC.IsOk()) {
+			co_yield wait_time { 1 };
+			NetPC = GetWorld(G) | GetNetPC;
+		}
+		FPac_Test::Bind([](FPac_Test Pac){ PacOf_Player.push_back(Pac); });
+		FPac_GetMyCharacterIndexFromServer::Bind([](FPac_GetMyCharacterIndexFromServer Pac){ PacOf_Player.push_back(Pac); });
 
-/*
-static ErrorOr<void> FindEntity_Asyc(uint64_t NetEntityID, ) {
+		Send(FPac_Test { 1, 2, "Hello Server!" }, NetPC.Unwrap());
+		ErrorOr<UUserWidget*> Widget = NetPC | CreateWidget(RES::WBP_MainMenu);
+		Widget | AddToViewport | WhenErr | PrintUELog_S;
+	}(G));
 	
+	UI_Call.Add(L"SpawnActor", [] {
+		//auto f =  [NetPC = NetPC.Unwrap()](auto Packet){ return Send(Packet, NetPC); };
+		//f(FPac_Test { 1, 2, "SpawnActor" });
+		SelectCharacter(RES::EPlayer::Padma);
+	});
 }
-*/
-
 
 static void Loop() {
-	static ErrorOr<System::Character::FPlayerData> MyChr = Err{ std::string { "My Character Not Setting" }  };
-	static auto Characters = std::vector<System::Character::FPlayerData> {}; 
-	
+	static ErrorOr<int32> MyChrIndex = Err { std::string("Not Setup MyPlayer") };
+	ErrorOr<System::Character::FPlayerData> MyChr = Err { std::string("Not Setup MyPlayer") };
 	for(auto& Pac : PacOf_Player) {
 		Pac | GetChatStringFrom | AppendFront_FStr(L"서버 메시지 : ") | PrintUELog;
-		//Pac | FindMyCharacter | 
+		MyChrIndex = Pac | GetMyChrNumber;
+		MyChr = MyChrIndex | GetPlayerData;
+
+		UE_LOG(LogTemp, Warning, TEXT("패킷 왔음!"));
+		//| Setup_CharacterInput;
 	}
-	
 	if(MyChr.IsOk()) {
 		const auto Input = NetPC | GetSubsystem
 								 | GetPlayerInput;

@@ -46,6 +46,11 @@ void Server_SendAll(is_packet auto Packet) {
 	for (auto& [Ptr, ID] : ClientList | std::views::values) { Send(Packet, Ptr); }
 }
 
+inline int32 GetNetEntityID() {
+	static int32 ID = 0;
+	return ID++;
+}
+
 inline void ServerLoad(UObject* G) {
 	// 서버인 경우만 실행 해야 하는데...
 	
@@ -54,12 +59,12 @@ inline void ServerLoad(UObject* G) {
 
 	FPac_Test::ServerBind([](const FPac_Test& Packet, const int ClientId) {
 		UE_LOG(LogTemp, Warning, TEXT("Server Recv - [%d]:%s"), ClientId, *Packet.ChatMassage);
-		Server_Send(Packet, ClientPtrList[ClientId]);
+		//Server_Send(Packet, ClientPtrList[ClientId]);
 	});
 	
 	FPac_SpawnAndPossess::ServerBind([G](const FPac_SpawnAndPossess& Packet, const int ClientId) {
 		UE_LOG(LogTemp, Warning, TEXT("ClientSpawn Packet Recv"));
-		const auto Chr = System::Character::SpawnCharacter_Padma(G);
+		const auto Chr = System::Character::SpawnCharacter_Padma(G, GetNetEntityID());
 		
 		if(Chr.IsOk()){
 			Chr.Unwrap().AChrPtr->SetReplicates(true);
@@ -67,7 +72,11 @@ inline void ServerLoad(UObject* G) {
 			
 			ClientPtrList[ClientId]->Possess(Chr.Unwrap().AChrPtr);
 			ChrList.push_back(Chr.Unwrap());
+			Server_Send(FPac_GetMyCharacterIndexFromServer { Chr.Unwrap().NetEntityIndex }, ClientPtrList[ClientId]) | WhenErr | [](const std::string& Err) {
+				UE_LOG(LogTemp, Warning, TEXT("FPac_GetMyCharacterIndexFromServer Send Error : %hs"), Err.c_str());
+			};
 		}
+		
 	});
 }
 

@@ -20,6 +20,8 @@
 	}           																						\
 
 
+struct FPac_GetMyCharacterIndexFromServer;
+
 namespace YC_Internal{
 static uint8 __packet_id_counter = 0;
 static uint8 GetPacketID() {
@@ -41,7 +43,7 @@ struct FPac_ClientConnected;
 // 각 패킷의 채널을 정의 합니다.
 // 같은 채널의 패킷들은 순서가 보장됩니다.
 // =========================================
-using Chanel_Player = std::variant<FPac_Test, FPac_ClientConnected, FPac_SpawnedCharacterInServer>;
+using Chanel_Player = std::variant<FPac_Test, FPac_ClientConnected, FPac_SpawnedCharacterInServer, FPac_GetMyCharacterIndexFromServer>;
 
 USTRUCT(BlueprintType)
 struct FPac_Test {
@@ -108,7 +110,7 @@ struct FPac_GetMyCharacterIndexFromServer {
 	GENERATED_BODY()
 	
 	UPROPERTY()
-	int8 CharacterIndexOfServer;
+	int32 CharacterIndexOfServer;
 
 	YC_PACKET(FPac_GetMyCharacterIndexFromServer);
 };

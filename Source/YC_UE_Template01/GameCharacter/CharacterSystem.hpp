@@ -40,9 +40,10 @@ using FCharacterData = std::variant<FMyCharacterData, FOtherCharacterData>;
 struct FPlayerData {
 	ACharacter* AChrPtr;
 	FCharacterData CharacterData;
+	int32 NetEntityIndex;
 };
 
-static ErrorOr<FPlayerData> SpawnCharacter_Padma(const UObject* GameMaster) {
+static ErrorOr<FPlayerData> SpawnCharacter_Padma(const UObject* GameMaster, const int32 NetEntityIndex) {
 	const auto Chr = Spawn<ACharacter>(GameMaster, ACharacter::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator);
 	
 	Chr | GetMesh | Curry(SetSkeletalMesh, RES::SKM_Manny);
@@ -54,9 +55,8 @@ static ErrorOr<FPlayerData> SpawnCharacter_Padma(const UObject* GameMaster) {
 
 	auto ActorIndexing = Chr | YC_Cast<UObject>
 							 | AddComp<UActorIndexingComp>
+							 | SetIndex_For_ActorIndexingComp(NetEntityIndex)
 							 | RegisterComponent;
-	//Chr.Unwrap()->AddComponent(FName("ActorIndexing"), true, FTransform::Identity, ActorIndexing.Unwrap());
-	//ActorIndexing.Unwrap();
 	
 	const auto RootComp = Chr | GetRootComp;
 	
@@ -64,7 +64,7 @@ static ErrorOr<FPlayerData> SpawnCharacter_Padma(const UObject* GameMaster) {
 	
 	CameraBoom | SetupAttachment(RootComp.Unwrap(), NAME_None);
 	CameraBoom | SetTargetArmLength(600.0f);
-	CameraBoom | SetUsePawnControlRotation(true);
+	CameraBoom | SetUsePawnControlRotation_SpringArm(true);
 	CameraBoom | RegisterComponent;
 	
 	auto FollowCamera = CameraBoom | AddComp<UCameraComponent>;
@@ -81,6 +81,7 @@ static ErrorOr<FPlayerData> SpawnCharacter_Padma(const UObject* GameMaster) {
 	FPlayerData Data {};
 	
 	Data.AChrPtr = Chr.Unwrap();
+	Data.NetEntityIndex = NetEntityIndex;
 	
 	return Data;
 }

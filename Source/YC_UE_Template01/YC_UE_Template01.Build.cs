@@ -14,7 +14,8 @@ public class YC_UE_Template01 : ModuleRules
 			"Engine", 
 			"InputCore", 
 			"HeadMountedDisplay", 
-			"EnhancedInput"
+			"EnhancedInput",
+			"UMG"
 		});
 		PublicIncludePaths.AddRange(new string[]
 		{

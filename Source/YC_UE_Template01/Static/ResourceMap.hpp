@@ -1,5 +1,6 @@
 #pragma once
 #include "InputMappingContext.h"
+#include "Blueprint/UserWidget.h"
 
 namespace RES {
 
@@ -12,8 +13,13 @@ inline UClass* IA_Move_SC;
 inline USkeletalMesh* SKM_Manny;
 inline UAnimBlueprint* ABP_Manny;
 
+inline TSubclassOf<UUserWidget> WBP_MainMenu;
+
 template <typename Type>
 using ObFind = ConstructorHelpers::FObjectFinder<Type>;
+
+template <typename Type>
+using CFind = ConstructorHelpers::FClassFinder<Type>;
 
 inline std::vector<std::unordered_map<std::string, UClass*>> IA_SC_Map_List;
 
@@ -28,6 +34,7 @@ inline void Load() {
 	using Find_IA = ObFind<UInputAction>;
 	using Find_Skm = ObFind<USkeletalMesh>;
 	using Find_ABP = ObFind<UAnimBlueprint>;
+	using Find_WBP = CFind<UUserWidget>;
 	
 	IMC_MainChr1 = Find_Imc(L"/Game/Input/IMC_Chr1").Object;
 	IMC_MainChr1_SC = IMC_MainChr1->StaticClass();
@@ -37,6 +44,8 @@ inline void Load() {
 	
 	SKM_Manny =  Find_Skm(L"/Game/Characters/Mannequins/Meshes/SKM_Manny").Object;
 	ABP_Manny = Find_ABP(L"/Game/Characters/Mannequins/Animations/ABP_Manny").Object;
+
+	WBP_MainMenu = Find_WBP(L"/Game/UI/NewWidgetBlueprint").Class;
 	
 	IA_SC_Map_List.resize(EPlayer::Num);
 	

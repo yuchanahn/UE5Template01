@@ -182,7 +182,15 @@ namespace YC {
 		}
 		return Err { std::string("InComp is not valid") };
 	}
+	static ErrorOr<void> SetUsePawnControlRotation_2(bool InUse, USpringArmComponent* InComp) {
+		if (IsValid(InComp)) {
+			InComp->bUsePawnControlRotation = InUse;
+			return {};
+		}
+		return Err { std::string("InComp is not valid") };
+	}
 	inline auto SetUsePawnControlRotation = Curry(SetUsePawnControlRotation_);
+	inline auto SetUsePawnControlRotation_SpringArm = Curry(SetUsePawnControlRotation_2);
 
 	static ErrorOr<void> SetTargetArmLength_(const float InLength, USpringArmComponent* InComp) {
 		if (IsValid(InComp)) {
@@ -193,10 +201,10 @@ namespace YC {
 	}
 	inline auto SetTargetArmLength = Curry(SetTargetArmLength_);
 
-	static ErrorOr<void> RegisterComponent(UActorComponent* InComp) {
+	static ErrorOr<UActorComponent*> RegisterComponent(UActorComponent* InComp) {
 		if (IsValid(InComp)) {
 			InComp->RegisterComponent();
-			return {};
+			return InComp;
 		}
 		return Err { std::string("InComp is not valid") };
 	}
@@ -206,6 +214,31 @@ namespace YC {
 			UE_LOG(LogTemp, Error, TEXT("%s"), InErr.GetError().c_str());
 		}
 	}
+
+	static ErrorOr<UUserWidget*> CreateWidget_(const TSubclassOf<UUserWidget> C, APlayerController* InObj) {
+		if (IsValid(InObj) && IsValid(C)) {
+			return CreateWidget<UUserWidget>(InObj, C);
+		}
+		return Err { std::string("InObj or C is not valid") };
+	}
+	inline auto CreateWidget = Curry(CreateWidget_);
+
+	static ErrorOr<void> AddToViewport(UUserWidget* InWidget) {
+		if (IsValid(InWidget)) {
+			InWidget->AddToViewport();
+			return {};
+		}
+		return Err { std::string("InWidget is not valid") };
+	}
+
+	static ErrorOr<UActorIndexingComp*> SetIndex_For_ActorIndexingComp_(const int32 InIndex, UActorIndexingComp* InComp) {
+		if (IsValid(InComp)) {
+			InComp->OwnID = InIndex;
+			return InComp;
+		}
+		return Err { std::string("InComp is not valid") };
+	}
+	inline auto SetIndex_For_ActorIndexingComp = Curry(SetIndex_For_ActorIndexingComp_);
 }
 
 template <typename Type>
