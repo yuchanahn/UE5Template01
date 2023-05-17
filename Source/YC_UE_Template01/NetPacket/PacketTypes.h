@@ -9,7 +9,7 @@
 
 #define YC_PACKET(Type) inline static uint8 __packet_id = YC_Internal::GetPacketID();			        \
 	static void Bind(std::function<void(Type)> Fn) {													\
-		__packet_events[__packet_id] = [Fn](const TArray<uint8>& Data) {								\
+		__packet_events[PC_ID % 2][__packet_id] = [Fn](const TArray<uint8>& Data) {							\
 			Fn(YC::PRW::Deserialize<Type>(Data));														\
 		};																								\
 	}																									\
@@ -19,8 +19,6 @@
 		};                                                                                              \
 	}           																						\
 
-
-struct FPac_GetMyCharacterIndexFromServer;
 
 namespace YC_Internal{
 static uint8 __packet_id_counter = 0;
@@ -34,6 +32,7 @@ static uint8 GetPacketID() {
 // 패킷은 반드시 YC_PACKET 매크로를 사용하여 정의해야 합니다.
 // =========================================
 
+struct FPac_GetMyCharacterIndexFromServer;
 struct FPac_SpawnedCharacterInServer;
 struct FPac_Test;
 struct FPac_ClientConnected;
@@ -43,21 +42,11 @@ struct FPac_ClientConnected;
 // 각 패킷의 채널을 정의 합니다.
 // 같은 채널의 패킷들은 순서가 보장됩니다.
 // =========================================
-using Chanel_Player = std::variant<FPac_Test, FPac_ClientConnected, FPac_SpawnedCharacterInServer, FPac_GetMyCharacterIndexFromServer>;
-
-USTRUCT(BlueprintType)
-struct FPac_Test {
-	GENERATED_BODY()
-	
-	UPROPERTY()
-	int32 TestInt;
-	UPROPERTY()
-	float TestFloat;
-	UPROPERTY()
-	FString ChatMassage;
-	
-	YC_PACKET(FPac_Test);
-};
+using Chanel_Player = std::variant<
+	FPac_ClientConnected,
+	FPac_SpawnedCharacterInServer,
+	FPac_GetMyCharacterIndexFromServer
+>;
 
 USTRUCT(BlueprintType)
 struct FPac_ClientConnected {
@@ -97,10 +86,10 @@ struct FPac_SpawnedCharacterInServer {
 	GENERATED_BODY()
 	
 	UPROPERTY()
-	int8 CharacterIndexOfServer;
+	int32 NetEntityIndexOfServer;
 
 	UPROPERTY()
-	int8 CharacterID;
+	int8 CharacterType;
 	
 	YC_PACKET(FPac_SpawnedCharacterInServer);
 };
@@ -110,7 +99,10 @@ struct FPac_GetMyCharacterIndexFromServer {
 	GENERATED_BODY()
 	
 	UPROPERTY()
-	int32 CharacterIndexOfServer;
+	int32 NetEntityIndexOfServer;
+
+	UPROPERTY()
+	int8 CharacterType;
 
 	YC_PACKET(FPac_GetMyCharacterIndexFromServer);
 };

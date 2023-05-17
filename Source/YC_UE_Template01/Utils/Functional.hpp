@@ -4,46 +4,30 @@
 #include <variant>
 #include <YC/ErrorOr/ErrorOr.hpp>
 
-template <typename T>
-struct function_traits;
-
-template <typename ReturnType, typename... Args>
-struct function_traits<ReturnType(Args...)>
-{
-	using return_type = ReturnType;
-	using arguments = std::tuple<Args...>;
-
-	static constexpr std::size_t arity = sizeof...(Args);
-
-	template <std::size_t N>
-	struct argument
-	{
-		static_assert(N < arity, "Error: Invalid parameter index.");
-		using type = std::tuple_element_t<N, arguments>;
-	};
+template<typename ... Ts>                                                 
+struct Overload : Ts ... { 
+	using Ts::operator() ...;
 };
+template<class... Ts> Overload(Ts...) -> Overload<Ts...>;
 
 template <typename T>
-struct function_traits : public function_traits<decltype(&T::operator())>
-{};
-
-template <typename T>
-using function_traits_t = typename function_traits<T>::arguments;
-
-template <typename T>
-struct get_fn_args_type;
+struct fn_first_args_type;
 
 template <typename ReturnType, typename... Args>
-struct get_fn_args_type<ReturnType(Args...)> {
+struct fn_first_args_type<ReturnType(Args...)> {
 	using type = std::tuple_element_t<0, std::tuple<Args...>>;
 };
 
-template <typename T>
-struct get_fn_args_type : public get_fn_args_type<decltype(&T::operator())> {};
+template<typename Ret, typename Class, typename... Args>
+struct fn_first_args_type<Ret (Class::*)(Args...) const>
+{
+	using type = std::tuple_element_t<0, std::tuple<Args...>>;
+};
+template <typename Callable>
+struct fn_first_args_type : fn_first_args_type<decltype(&Callable::operator())> {};
 
 template <typename T>
-using get_fn_args_type_t = typename get_fn_args_type<T>::type;
-
+using fn_first_args_type_t = typename fn_first_args_type<T>::type;
 
 template <typename T>
 struct is_variant : std::false_type {};
@@ -55,9 +39,9 @@ template <typename T>
 concept Variant = is_variant<T>::value;
 
 template <Variant VarType, typename FnType>
-requires is_t_err_opt<std::invoke_result_t<FnType, get_fn_args_type_t<FnType>>>
+requires is_t_err_opt<std::invoke_result_t<FnType, fn_first_args_type_t<FnType>>>
 static auto operator| (const VarType& Var, const FnType& Fn) -> decltype(Fn({})) {
-	using FnArgsType = get_fn_args_type_t<FnType>;
+	using FnArgsType = fn_first_args_type_t<FnType>;
 	return std::visit([&Fn]<typename T0>(T0&& Args) -> decltype(Fn({})) {
 			if constexpr (std::is_same_v<std::decay_t<T0>, FnArgsType>) return Fn(Args);
 			else return Err { std::string("Not Matched Variant!") };
@@ -65,14 +49,15 @@ static auto operator| (const VarType& Var, const FnType& Fn) -> decltype(Fn({}))
 }
 
 template <Variant VarType, typename FnType>
-requires !is_t_err_opt<std::invoke_result_t<FnType, get_fn_args_type_t<FnType>>>
+requires !is_t_err_opt<std::invoke_result_t<FnType, fn_first_args_type_t<FnType>>>
 static auto operator| (const VarType& Var, const FnType& Fn) -> ErrorOr<decltype(Fn({})), std::string> {
-	using FnArgsType = get_fn_args_type_t<FnType>;
+	using FnArgsType = fn_first_args_type_t<FnType>;
 	return std::visit([&Fn]<typename T0>(T0&& Args) -> ErrorOr<decltype(Fn({})), std::string> {
 			if constexpr (std::is_same_v<std::decay_t<T0>, FnArgsType>) return Fn(Args);
 			else return Err { std::string("Not Matched Variant!") };
 	}, Var);
 }
+
 
 namespace YC_Impl {
 

@@ -3,19 +3,17 @@
 #include "GameWorld/GLoop.hpp"
 #include "NetPacket/Packets.hpp"
 #include "Server/Server.hpp"
-#include "Utils/String.hpp"
-
 
 void ANetPC::BeginPlay() {
 	Super::BeginPlay();
 	if(HasAuthority()) {
-		if(YC_Global::IsGameLoopStarted) {
+		//if(YC_Global::IsGameLoopStarted) {
 			YC::Server::OnClientConnect(this);
-		} else {
-			YC_Global::OnGameStart_EventList.push_back([this]() {
-				YC::Server::OnClientConnect(this);
-			});
-		}
+		//} else {
+		//	YC_Global::OnGameStart_EventList.push_back([this]() {
+		//		YC::Server::OnClientConnect(this);
+		//	});
+		//}
 	}
 }
 
@@ -34,27 +32,15 @@ void ANetPC::SendPacketToClient(const uint8 ID, const TArray<uint8>& Packet) con
 	C_ClientRecvPacket(ID, Packet);
 }
 
-void ANetPC::UI_MsgCall(const FString Msg) {
-	if(YC::Client::UI_Call.Contains(Msg)) {
-		YC::Client::UI_Call[Msg]();
-	}
-}
 
 void ANetPC::C_ClientRecvPacket_Implementation(const uint8 ID, const TArray<uint8>& Packet) const{
-	const auto Err = __call_packet_event(Packet, ID);
-	if(Err.IsErr()) {
-		UE_LOG(LogTemp, Error, TEXT("Packet Error: %s"), *ToFStr(Err.GetError()));
-	}
+	__call_packet_event(Packet, ID, My_PC_ID) | WhenErr | YC::Log::Push_S;
 }
-
 void ANetPC::S_ServerRecvPacket_Implementation(const uint8 ID, const TArray<uint8>& Packet) const{
 	auto ClntID = YC::Server::GetClientID(this);
 	if(ClntID.IsErr()) {
 		UE_LOG(LogTemp, Error, TEXT("Client ID is not valid!"));
 		return;
 	}
-	const auto Err = __server__call_packet_event(Packet, ID, ClntID.Unwrap());
-	if(Err.IsErr()) {
-		UE_LOG(LogTemp, Error, TEXT("Packet Error: %s"), *ToFStr(Err.GetError()));
-	}
+	__server__call_packet_event(Packet, ID, ClntID.Unwrap()) | WhenErr | YC::Log::Push_S;
 }

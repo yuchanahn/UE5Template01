@@ -2,138 +2,142 @@
 
 #include <YC/Coroutine/Coro.hpp>
 #include <YC/ErrorOr/ErrorOr.hpp>
+#include <ranges>
 
-#include "YC_UE_Template01/GameCharacter/CharacterSystem.hpp"
-#include "YC_UE_Template01/Input/Input.hpp"
-#include "YC_UE_Template01/NetPacket/PacketAction.hpp"
-#include "YC_UE_Template01/NetPacket/PacketTypes.h"
-#include "YC_UE_Template01/Static/ResourceMap.hpp"
-#include "YC_UE_Template01/Static/Static.hpp"
-#include "YC_UE_Template01/Utils/Functional.hpp"
-#include "YC_UE_Template01/Utils/String.hpp"
+#include "../GameCharacter/CharacterSystem.hpp"
+#include "../Input/Input.hpp"
+#include "../Log/Log.hpp"
+#include "../NetPacket/PacketAction.hpp"
+#include "../NetPacket/PacketTypes.h"
+#include "../Static/ResourceMap.hpp"
+#include "../Static/Static.hpp"
+#include "../Utils/Functional.hpp"
+#include "../Utils/String.hpp"
+#include "../Web/Http.hpp"
+#include "YC_UE_Template01/UI/UI.hpp"
 
-namespace YC { namespace Client {
+namespace YC::Client {
+struct FPacBuf {
+	std::vector<Chanel_Player> PlayerPacs;
+	void Clear() { PlayerPacs.clear(); }
+};
 
-static void SelectCharacter(const int8 CharacterID);
+struct FWorld {
+	// Player //
+	std::vector<System::Character::FPlayerData> Players;
 
-inline std::vector<Chanel_Player> PacOf_Player = {};
-inline ErrorOr<ANetPC*> NetPC { "Not Setting" };
-inline std::unordered_map<int32, UActorIndexingComp*> ANetEntity_List = {};
-inline TMap<FString, std::function<void()>> UI_Call;
+	// Widget //
+	ErrorOr<UUserWidget*> MainMenu = Err{std::string("Not Implemented")};
+	ErrorOr<YcButton> StartButton = Err{std::string("Not Implemented")};
+};
 
-inline FString GetChatStringFrom(FPac_Test Packet) {
-	//SelectCharacter(0);
-	return { Packet.ChatMassage };
-}
+static FWorld Load(const UObject* G, FPacBuf* PacBuf, const ANetPC* NetPC) {
+	const bool IsServer = (GetWorld(G) | GetNetPC | HasAuthority).Or(false);
 
-static void PrintUELog(const FString& Msg) {
-	UE_LOG(LogTemp, Warning, TEXT("%s"), *Msg);
-}
-
-static void Push_UEDisplayLog(FString Msg) {
-	//GEngine->DisplayLog (LogTemp, Warning, TEXT("Client Recv - %s"), *Msg);
-}
-static void PrintUELog_S(const std::string& Msg) {
-	UE_LOG(LogTemp, Warning, TEXT("%s"), *FString(UTF8_TO_TCHAR(Msg.c_str())));
-}
-
-static void SendChatMessage(const FString& Msg) {
-	Send(FPac_Test { 1, 2, Msg }, NetPC.Unwrap());
-	//NetPC | Curry(Send)(FPac_Test { 1, 2, Msg });
-}
-
-static void SelectCharacter(const int8 CharacterID) {
-	Send(FPac_SpawnAndPossess { CharacterID }, NetPC.Unwrap());
-	//Send();
-}
-
-static System::Character::FPlayerData Setup_CharacterInput(
-	const ANetPC* PC,
-	const System::Character::FPlayerData& MyPlayer,
-	const UClass* IMC_SC,
-	const std::unordered_map<std::string, UClass*>& IA_SC_List
-	) {
-	
-	GetSubsystem(PC) | AddMappingContext(NewObject<UInputMappingContext>(MyPlayer.AChrPtr, IMC_SC), 0);
-	
-	auto Result_Player = MyPlayer;
-	
-	auto Data = std::get<System::Character::FMyCharacterData>(Result_Player.CharacterData);
-	for(const auto& [fst, snd] : IA_SC_List) {
-		 Data.IA_Map[fst] = NewObject<UInputAction>(MyPlayer.AChrPtr, snd);
-	}
-	
-	Result_Player.CharacterData = Data;
-	return Result_Player;
-}
-
-static ErrorOr<int32> GetMyChrNumber(const FPac_GetMyCharacterIndexFromServer& Packet) {
-	UE_LOG(LogTemp, Warning, TEXT("MyChrIndex : %d"), Packet.CharacterIndexOfServer);
-	return Packet.CharacterIndexOfServer;
-}
-
-static ErrorOr<System::Character::FPlayerData> GetPlayerData(const int32 CharacterIndexOfServer) {
-	if(ANetEntity_List.contains(CharacterIndexOfServer)) {
-		const auto Owner = ANetEntity_List[CharacterIndexOfServer]->GetOwner();
-		if(Owner == nullptr) {
-			return Err { std::string("Not Found Owner") };
-		}
-		const auto Chr = Cast<ACharacter>(Owner);
-		if(Chr == nullptr) {
-			return Err { std::string("Not Found ACharacter") };
-		}
-		
-		return System::Character::FPlayerData { Chr };
-	}
-	return Err { std::string("Not Found Character index of Array") };
-}
-
-static void Load(const UObject* G) {
-	Coro::CoStart([](const UObject* G) -> coroutine {
-		NetPC = GetWorld(G) | GetNetPC;
-		while(!NetPC.IsOk()) {
-			co_yield wait_time { 1 };
-			NetPC = GetWorld(G) | GetNetPC;
-		}
-		FPac_Test::Bind([](FPac_Test Pac){ PacOf_Player.push_back(Pac); });
-		FPac_GetMyCharacterIndexFromServer::Bind([](FPac_GetMyCharacterIndexFromServer Pac){ PacOf_Player.push_back(Pac); });
-
-		Send(FPac_Test { 1, 2, "Hello Server!" }, NetPC.Unwrap());
-		ErrorOr<UUserWidget*> Widget = NetPC | CreateWidget(RES::WBP_MainMenu);
-		Widget | AddToViewport | WhenErr | PrintUELog_S;
-	}(G));
-	
-	UI_Call.Add(L"SpawnActor", [] {
-		//auto f =  [NetPC = NetPC.Unwrap()](auto Packet){ return Send(Packet, NetPC); };
-		//f(FPac_Test { 1, 2, "SpawnActor" });
-		SelectCharacter(RES::EPlayer::Padma);
+	FPac_GetMyCharacterIndexFromServer::Bind([PacBuf](FPac_GetMyCharacterIndexFromServer Pac) {
+		PacBuf->PlayerPacs.push_back(Pac);
 	});
+	FPac_SpawnedCharacterInServer::Bind([PacBuf](FPac_SpawnedCharacterInServer Pac) {
+		PacBuf->PlayerPacs.push_back(Pac);
+	});
+
+#if WITH_EDITOR
+	UE_LOG(LogTemp, Warning, TEXT("%s : 피시 아이디 : %d"), (IsServer ? L"서버" : L"클라"), PC_ID % 2);
+	const_cast<ANetPC*>(NetPC)->SetPCID(PC_ID % 2);
+	PC_ID++;
+#endif
+	
+	const ErrorOr<UUserWidget*> Widget = CreateWidget_(RES::WBP_MainMenu, const_cast<ANetPC*>(NetPC));
+	Widget | AddToViewport | WhenErr | Log::Push_S;
+	
+	return {{}, {Widget.Unwrap()}, {Widget | GetButton("Button_2")} };
 }
 
-static void Loop() {
-	static ErrorOr<int32> MyChrIndex = Err { std::string("Not Setup MyPlayer") };
-	ErrorOr<System::Character::FPlayerData> MyChr = Err { std::string("Not Setup MyPlayer") };
-	for(auto& Pac : PacOf_Player) {
-		Pac | GetChatStringFrom | AppendFront_FStr(L"서버 메시지 : ") | PrintUELog;
-		MyChrIndex = Pac | GetMyChrNumber;
-		MyChr = MyChrIndex | GetPlayerData;
+static ErrorOr<AActor*> FindNetEntity(const UObject* G, const int32& NetEntityIndex) {
+	const auto Actors = GetWorld(G) | GetAllActors;
+	if (Actors.IsErr()) return Err{std::string("GetAllActors is failed")};
 
-		UE_LOG(LogTemp, Warning, TEXT("패킷 왔음!"));
-		//| Setup_CharacterInput;
+	for (const auto Actor : Actors.Unwrap()) {
+		if (const auto Index = Actor->FindComponentByClass<UActorIndexingComp>()) {
+			const bool IsServer = (GetWorld(G) | GetNetPC | HasAuthority).Or(false);
+			UE_LOG(LogTemp, Warning, TEXT("%s : FindNetEntity : %d == %d"), (IsServer ? L"서버" : L"클라"), Index->OwnID,
+			       NetEntityIndex);
+			if (Index->OwnID == NetEntityIndex) { return Actor; }
+		}
 	}
-	if(MyChr.IsOk()) {
-		const auto Input = NetPC | GetSubsystem
-								 | GetPlayerInput;
+
+	return Err{std::string("FindNetEntity is failed")};
+}
+
+static System::Character::FPlayerData NewPlayerSetup(FPac_SpawnedCharacterInServer Packet) {
+	return {
+		.AChrPtr = Err{std::string("NewPlayerSetup : Not Implemented")},
+		.CharacterData = System::Character::FOtherCharacterData{},
+		.NetEntityIndex = Packet.NetEntityIndexOfServer,
+		.PlayerType = static_cast<RES::EPlayer>(Packet.CharacterType),
+	};
+}
+
+static System::Character::FPlayerData GetMyChr(FPac_GetMyCharacterIndexFromServer Packet) {
+	auto R = NewPlayerSetup({Packet.NetEntityIndexOfServer, Packet.CharacterType});
+	R.CharacterData = System::Character::FMyCharacterData{};
+	return R;
+}
+
+static FWorld Loop(const UObject* G, const FPacBuf& PacBuf, FWorld World) {
+	const auto NetPC = GetWorld(G) | GetNetPC;
+	if (!NetPC.IsOk()) return World;
+	const bool IsServer = (GetWorld(G) | GetNetPC | HasAuthority).Or(false);
+
+	for (auto& Pac : PacBuf.PlayerPacs) {
+		UE_LOG(LogTemp, Warning, TEXT("%s : 패킷 전송 확인!"), IsServer ? L"서버" : L"클라");
+		const auto NewChr = Pac | NewPlayerSetup;
+		const auto MyChr = Pac | GetMyChr;
+		auto AddNewChr = [&](const System::Character::FPlayerData& Chr) { World.Players.push_back(Chr); };
+		NewChr | AddNewChr;
+		MyChr | AddNewChr;
+	}
+	// UI Update
+	{
+		World.StartButton | IsBtnUp | WhenOk | [&World, NetPC](auto R) {
+			auto [NewBtn, Result] = R;
+			World.StartButton = NewBtn;
+			if (Result) { Send(FPac_SpawnAndPossess{RES::EPlayer::Padma}, NetPC.Unwrap()); }
+		};
+	}
+
+	for (auto& [AChrPtr, CharacterData, NetEntityIndex, PlayerType] : World.Players) {
+
+		auto UpdateChrData = [&CharacterData](auto Data){ CharacterData = Data; };
 		
-		Input | WhenErr | PrintUELog_S;
-		//Input | std::bind_front(InputCheck_, MyChr.Unwrap().CharacterData) | WhenErr | PrintUELog_S;
+		if (AChrPtr.IsErr()) {
+			AChrPtr = FindNetEntity(G, NetEntityIndex) | YC_Cast<ACharacter>;
+			AChrPtr | WhenErr | Log::Push_S;
+			if (AChrPtr.IsErr()) continue;
+			CharacterData | [&](System::Character::FMyCharacterData Arg) {
+				NetPC | GetSubsystem | AddMappingContext(RES::IMC_MainChr1, 0);
+				NetPC | SetInputMode_GameOnly_;
+				return Arg;
+			} | WhenOk | UpdateChrData;
+		}
+
+		CharacterData = std::visit(Overload{
+			                           [&](System::Character::FMyCharacterData& Arg) ->
+			                           System::Character::FCharacterData {
+				                           auto Input = NetPC | GetSubsystem | GetPlayerInput;
+				                           Input | InputCheck(RES::IA_Move) | System::Character::Movement(
+					                           NetPC.Unwrap(), AChrPtr.Unwrap());
+				                           Input | InputCheck(RES::IA_Look) | System::Character::Look(AChrPtr.Unwrap())
+					                           | WhenErr | Log::Push_S;
+				                           return Arg;
+			                           },
+			                           [&](System::Character::FOtherCharacterData& Arg) ->
+			                           System::Character::FCharacterData {
+				                           return Arg;
+			                           },
+		                           }, CharacterData);
 	}
-	
-	PacOf_Player.clear();
-}
 
-static void Unload() {
-	
+	return World;
 }
-
-}}
+}
