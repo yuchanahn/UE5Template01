@@ -2,7 +2,6 @@
 
 #include <YC/Coroutine/Coro.hpp>
 #include <YC/ErrorOr/ErrorOr.hpp>
-#include <ranges>
 
 #include "../GameCharacter/CharacterSystem.hpp"
 #include "../Input/Input.hpp"
@@ -12,9 +11,9 @@
 #include "../Static/ResourceMap.hpp"
 #include "../Static/Static.hpp"
 #include "../Utils/Functional.hpp"
-#include "../Utils/String.hpp"
-#include "../Web/Http.hpp"
 #include "YC_UE_Template01/UI/UI.hpp"
+
+#define PACKET_BIND(PacType) PacType::Bind([PacBuf](PacType Pac) { PacBuf->PlayerPacs.push_back(Pac); });
 
 namespace YC::Client {
 struct FPacBuf {
@@ -33,14 +32,11 @@ struct FWorld {
 
 static FWorld Load(const UObject* G, FPacBuf* PacBuf, const ANetPC* NetPC) {
 	const bool IsServer = (GetWorld(G) | GetNetPC | HasAuthority).Or(false);
-
-	FPac_GetMyCharacterIndexFromServer::Bind([PacBuf](FPac_GetMyCharacterIndexFromServer Pac) {
-		PacBuf->PlayerPacs.push_back(Pac);
-	});
-	FPac_SpawnedCharacterInServer::Bind([PacBuf](FPac_SpawnedCharacterInServer Pac) {
-		PacBuf->PlayerPacs.push_back(Pac);
-	});
-
+	PACKET_BIND(FPac_GetMyCharacterIndexFromServer);
+	PACKET_BIND(FPac_SpawnedCharacterInServer);
+	
+	SetInputMode_UIOnly(NetPC);
+	
 #if WITH_EDITOR
 	UE_LOG(LogTemp, Warning, TEXT("%s : 피시 아이디 : %d"), (IsServer ? L"서버" : L"클라"), PC_ID % 2);
 	const_cast<ANetPC*>(NetPC)->SetPCID(PC_ID % 2);
@@ -84,58 +80,50 @@ static System::Character::FPlayerData GetMyChr(FPac_GetMyCharacterIndexFromServe
 	return R;
 }
 
-static FWorld Loop(const UObject* G, const FPacBuf& PacBuf, FWorld World) {
+static FWorld Tick(const UObject* G, const FPacBuf& PacBuf, FWorld World) {
 	const auto NetPC = GetWorld(G) | GetNetPC;
 	if (!NetPC.IsOk()) return World;
-	const bool IsServer = (GetWorld(G) | GetNetPC | HasAuthority).Or(false);
-
+	
 	for (auto& Pac : PacBuf.PlayerPacs) {
-		UE_LOG(LogTemp, Warning, TEXT("%s : 패킷 전송 확인!"), IsServer ? L"서버" : L"클라");
 		const auto NewChr = Pac | NewPlayerSetup;
 		const auto MyChr = Pac | GetMyChr;
 		auto AddNewChr = [&](const System::Character::FPlayerData& Chr) { World.Players.push_back(Chr); };
 		NewChr | AddNewChr;
 		MyChr | AddNewChr;
 	}
+
+	return World;
+}
+
+static FWorld UpdateWorld(const UObject* G, FWorld World) {
+	const auto NetPC = GetWorld(G) | GetNetPC;
+	if (!NetPC.IsOk()) return World;
+	
 	// UI Update
 	{
-		World.StartButton | IsBtnUp | WhenOk | [&World, NetPC](auto R) {
+		World.StartButton | IsBtnUp | [&World, NetPC](std::pair<YcButton, bool> R) {
 			auto [NewBtn, Result] = R;
 			World.StartButton = NewBtn;
-			if (Result) { Send(FPac_SpawnAndPossess{RES::EPlayer::Padma}, NetPC.Unwrap()); }
+			if (Result) { Send(FPac_SpawnAndPossess{ RES::EPlayer::Padma }, NetPC.Unwrap()); }
 		};
 	}
-
 	for (auto& [AChrPtr, CharacterData, NetEntityIndex, PlayerType] : World.Players) {
-
-		auto UpdateChrData = [&CharacterData](auto Data){ CharacterData = Data; };
-		
+		auto ApplyChr = [&CharacterData](System::Character::FCharacterData Data){ CharacterData = Data; };
 		if (AChrPtr.IsErr()) {
 			AChrPtr = FindNetEntity(G, NetEntityIndex) | YC_Cast<ACharacter>;
 			AChrPtr | WhenErr | Log::Push_S;
-			if (AChrPtr.IsErr()) continue;
 			CharacterData | [&](System::Character::FMyCharacterData Arg) {
 				NetPC | GetSubsystem | AddMappingContext(RES::IMC_MainChr1, 0);
-				NetPC | SetInputMode_GameOnly_;
+				NetPC | SetInputMode_GameOnly;
 				return Arg;
-			} | WhenOk | UpdateChrData;
+			} | ApplyChr;
 		}
-
-		CharacterData = std::visit(Overload{
-			                           [&](System::Character::FMyCharacterData& Arg) ->
-			                           System::Character::FCharacterData {
-				                           auto Input = NetPC | GetSubsystem | GetPlayerInput;
-				                           Input | InputCheck(RES::IA_Move) | System::Character::Movement(
-					                           NetPC.Unwrap(), AChrPtr.Unwrap());
-				                           Input | InputCheck(RES::IA_Look) | System::Character::Look(AChrPtr.Unwrap())
-					                           | WhenErr | Log::Push_S;
-				                           return Arg;
-			                           },
-			                           [&](System::Character::FOtherCharacterData& Arg) ->
-			                           System::Character::FCharacterData {
-				                           return Arg;
-			                           },
-		                           }, CharacterData);
+		CharacterData | [&](System::Character::FMyCharacterData Arg) {
+			auto Input = NetPC | GetSubsystem | GetPlayerInput;
+			Input | InputCheck(RES::IA_Move) | System::Character::Movement(NetPC.Unwrap(), AChrPtr.Unwrap());
+			Input | InputCheck(RES::IA_Look) | System::Character::Look(AChrPtr.Unwrap());
+			return Arg;
+		} | ApplyChr;
 	}
 
 	return World;

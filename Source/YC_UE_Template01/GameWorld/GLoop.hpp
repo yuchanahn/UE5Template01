@@ -59,22 +59,22 @@ inline FGameLoopEndData GameLoop(
 	double Sec = T - TickCount * DSec;
 
 	YC::Client::FWorld NewWorld = World;
+
 	while (Sec >= DSec) {
 		auto NetPc = YC::GetWorld(G) | YC::GetNetPC;
 
-		if((NetPc | YC::HasAuthority).Or(false)) {
-			YC::Server::ServerLoop();
-		}
+		if((NetPc | YC::HasAuthority).Or(false)) YC::Server::ServerLoop();
 		
 		if(NetPc.IsOk()) {
 			const auto Pac_Clone = *PacBuf;
 			const_cast<YC::Client::FPacBuf*>(PacBuf)->Clear();
-			NewWorld = Loop(G, Pac_Clone, NewWorld);
+			NewWorld = Tick(G, Pac_Clone, NewWorld);
 		}
-		
 		Sec -= DSec;
 		NewTickCount++;
 	}
+
+	NewWorld = UpdateWorld(G, NewWorld);
 	
 	return FGameLoopEndData {
 		.TickCount = NewTickCount,

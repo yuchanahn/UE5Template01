@@ -225,15 +225,22 @@ static ErrorOr<UActorIndexingComp*> SetIndex_For_ActorIndexingComp_(const int32 
 //SetIndex_For_ActorIndexingComp_(const int32 InIndex, UActorIndexingComp* InComp) -> ErrorOr<UActorIndexingComp*>
 inline auto SetIndex_For_ActorIndexingComp = Curry(SetIndex_For_ActorIndexingComp_);
 
-static ErrorOr<void> SetInputMode_GameOnly_(APlayerController* InPC) {
+static ErrorOr<void> SetInputMode(APlayerController* InPC, const FInputModeDataBase& InMode) {
 	if (IsValid(InPC)) {
-		InPC->SetInputMode(FInputModeGameOnly{});
+		InPC->SetInputMode(InMode);
 		return {};
 	}
 	return Err{std::string("InPC is not valid")};
 }
-//SetInputMode_GameOnly_(APlayerController* InPC) -> ErrorOr<void>
-inline auto SetInputMode_GameOnly = Curry(SetInputMode_GameOnly_);
+
+//SetInputMode_GameOnly(APlayerController* InPC) -> ErrorOr<void>
+inline auto SetInputMode_GameOnly = Curry(SetInputMode)(FInputModeGameOnly());
+//SetInputMode_UIOnly(APlayerController* InPC) -> ErrorOr<void>
+inline auto SetInputMode_UIOnly = Curry(SetInputMode)(FInputModeUIOnly());
+//SetInputMode_GameAndUI(APlayerController* InPC) -> ErrorOr<void>
+inline auto SetInputMode_GameAndUI = Curry(SetInputMode)(FInputModeGameAndUI());
+
+
 
 static std::vector<AActor*> GetAllActors(const UObject* InObj) {
 	if (IsValid(InObj)) {
